@@ -30,16 +30,42 @@ int computecentroids(ftype* f, ftype* centroids, PyArrayObject* a_assignments, P
     std::fill(counts, counts + k, 0);
     std::fill(centroids, centroids + k*Nf, 0.0);
 
-    for (int i = 0; i != N; i++){
-        const int c = assignments[i];
-        if (c >= k) continue; // throw Kmeans_Exception("wrong value in assignments");
-        ftype* ck = centroids + Nf*c;
-        for (int j = 0; j != Nf; ++j) {
-            *ck++ += *f++;
+    #pragma omp parallel shared(assignments, counts, centroids, f)
+    {
+        int *local_counts = (int*) malloc(k * sizeof(int));
+        ftype *local_ck = (ftype*) malloc(k * Nf * sizeof(ftype));
+        std::fill(local_counts, local_counts + k, 0);
+        std::fill(local_ck, local_ck + k*Nf, ftype());
+
+        #pragma omp for schedule(static)
+        for (int i = 0; i < N; i++){
+            const int c = assignments[i];
+            if (c >= k) continue; // throw Kmeans_Exception("wrong value in assignments");
+            ftype* lck = local_ck + Nf*c;
+            for (int j = 0; j != Nf; ++j) {
+                *lck++ += f[i*Nf + j];
+            }
+            ++local_counts[c];
         }
-        ++counts[c];
+
+        ftype* ck = centroids;
+        ftype* lck = local_ck;
+        for (int c=0; c < k; c++) {
+            #pragma omp critical(reduce)
+            {
+                for (int j = 0; j != Nf; ++j) {
+                    *ck++ += *lck++;
+                }
+                counts[c] += local_counts[c];
+            }
+        }
+
+        free(local_counts);
+        free(local_ck);
     }
-    for (int i = 0; i != k; ++i) {
+
+    #pragma omp parallel for reduction(+:zero_counts) schedule(static) shared(counts,centroids) 
+    for (int i = 0; i < k; ++i) {
         ftype* ck = centroids + Nf*i;
         const ftype c = counts[i];
         if (c == 0) {

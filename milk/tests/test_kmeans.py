@@ -54,6 +54,6 @@ def test_kmeans_return_partial():
     assignments,centroids = milk.unsupervised.kmeans(features, 2, R=129)
     centroids_ = milk.unsupervised.kmeans(features, 2, R=129, return_assignments=False)
     assignments_ = milk.unsupervised.kmeans(features, 2, R=129, return_centroids=False)
+    assert np.allclose(assignments == assignments_)
     assert np.all(centroids == centroids_)
-    assert np.all(assignments == assignments_)
 

@@ -57,7 +57,8 @@ _extensions = {
         'milk.supervised._lasso' : ['milk/supervised/_lasso.cpp'],
 }
 
-compiler_args = ['-std=c++0x']
+compiler_args = ['-std=c++0x', '-fopenmp']
+link_args=['-lgomp']
 if platform.system() == 'Darwin':
   compiler_args.append('-stdlib=libc++')
 
@@ -67,6 +68,7 @@ ext_modules = [
                 undef_macros=undef_macros,
                 define_macros=define_macros,
                 extra_compile_args=compiler_args,
+                extra_link_args=link_args,
                 )
         for key,sources in _extensions.items()
 ]
