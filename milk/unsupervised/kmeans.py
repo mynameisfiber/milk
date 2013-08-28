@@ -219,13 +219,13 @@ def kmeans(fmatrix, k, distance='euclidean', max_iter=1000, R=None, return_assig
         fmatrix = zscore(fmatrix)
         distance = 'euclidean'
     if distance == 'euclidean':
-        def distfunction(fmatrix, cs, dists):
-            dists = _dot3(fmatrix, (-2)*cs.T, dists)
+        def distfunction(fmatrix, cs, _):
+            dists = _dot3(fmatrix, (-2)*cs.T, None)
             dists += np.array([np.dot(c,c) for c in cs])
             # For a distance, we'd need to add the fmatrix**2 components, but
             # it doesn't matter because we are going to perform an argmin() on
             # the result.
-            return dists
+            return dists.argmin(1)
     elif distance == 'mahalanobis':
         icov = kwargs.get('icov', None)
         if icov is None:
@@ -234,13 +234,18 @@ def kmeans(fmatrix, k, distance='euclidean', max_iter=1000, R=None, return_assig
                 covmat = np.cov(fmatrix.T)
             icov = linalg.inv(covmat)
         def distfunction(fmatrix, cs, _):
-            return np.array([_mahalanobis2(fmatrix, c, icov) for c in cs]).T
+            dists = np.array([_mahalanobis2(fmatrix, c, icov) for c in cs]).T
+            return dists.argmin(1)
     else:
         raise ValueError('milk.unsupervised.kmeans: `distance` argument unknown (%s)' % distance)
     if k < 2:
         raise ValueError('milk.unsupervised.kmeans `k` should be >= 2.')
     if fmatrix.dtype in (np.float32, np.float64) and fmatrix.flags['C_CONTIGUOUS']:
         computecentroids = _kmeans.computecentroids
+        if distance == 'euclidian':
+            def distfunction(fmatrix, centroids, assignments):
+                _kmeans.assignclass_euclidian(fmatrix, centroids, assignments)
+                return assignments
     else:
         computecentroids = _pycomputecentroids
 
@@ -256,19 +261,16 @@ def kmeans(fmatrix, k, distance='euclidean', max_iter=1000, R=None, return_assig
 
     prev = np.zeros(len(fmatrix), np.int32)
     counts = np.empty(k, np.int32)
-    dists = None
+    assignments = np.empty((fmatrix.shape[0],), dtype=np.int32)
     for i in xrange(max_iter):
-        dists = distfunction(fmatrix, centroids, dists)
-        assignments = dists.argmin(1)
+        assignments = distfunction(fmatrix, centroids, assignments)
         if np.all(assignments == prev):
             break
-        if computecentroids(fmatrix, centroids, assignments.astype(np.int32), counts):
+        if computecentroids(fmatrix, centroids, assignments.astype(np.int32, copy=False), counts):
             (empty,) = np.where(counts == 0)
             centroids = np.delete(centroids, empty, axis=0)
             k = len(centroids)
             counts = np.empty(k, np.int32)
-            # This will cause new matrices to be allocated in the next iteration
-            dists = None
         prev[:] = assignments
     if return_centroids and return_assignments:
         return assignments, centroids
